@@ -352,11 +352,12 @@ function Restore-ClaudeIdeBackups {
 
 function Get-ClaudeCliReplacements {
     [ordered]@{
-        "Tips for getting started" = "入门提示"
-        "Run /init to create a CLAUDE.md file with instructions for Claude" = "运行 /init 创建包含 Claude 使用说明的 CLAUDE.md 文件"
-        "/release-notes for more" = "/release-notes 更多"
-        "Check the Claude Code changelog for updates" = "查看 Claude Code 更新日志"
-        "(ctrl+o to expand)" = "(ctrl+o 展开)"
+        'title:"Tips for getting started"' = 'title:"入门提示"'
+        'title:"What''s new"' = 'title:"新内容"'
+        'text:"Run /init to create a CLAUDE.md file with instructions for Claude"' = 'text:"运行 /init 创建包含 Claude 使用说明的 CLAUDE.md 文件"'
+        '"/release-notes for more"' = '"/release-notes 更多"'
+        '"Check the Claude Code changelog for updates"' = '"查看 Claude Code 更新日志"'
+        '"(ctrl+o to expand)"' = '"(ctrl+o 展开)"'
         'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?"正在搜索":"已搜索"'
         'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?"正在读取":"已读取"'
         'm===1?"pattern":"patterns"' = '"个匹配项"'
@@ -388,21 +389,6 @@ function Patch-ClaudeCliText {
         $bytes = [System.IO.File]::ReadAllBytes($path)
         $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
         $count = 0
-
-        $whatsNew = "What's new"
-        $offset = 0
-        while (($offset = $searchable.IndexOf($whatsNew, $offset, [System.StringComparison]::Ordinal)) -ge 0) {
-            $contextLength = [Math]::Min(256, $searchable.Length - $offset)
-            if ($searchable.Substring($offset, $contextLength).Contains("/release-notes for more")) {
-                $replacement = [System.Text.Encoding]::UTF8.GetBytes("新内容")
-                [System.Array]::Copy($replacement, 0, $bytes, $offset, $replacement.Length)
-                for ($index = $replacement.Length; $index -lt $whatsNew.Length; $index++) {
-                    $bytes[$offset + $index] = 0x20
-                }
-                $count++
-            }
-            $offset += $whatsNew.Length
-        }
 
         foreach ($entry in (Get-ClaudeCliReplacements).GetEnumerator()) {
             $source = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Key)
