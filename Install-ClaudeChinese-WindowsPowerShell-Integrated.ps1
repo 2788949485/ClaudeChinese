@@ -353,20 +353,26 @@ function Restore-ClaudeIdeBackups {
 function Get-ClaudeCliReplacements {
     [ordered]@{
         "Tips for getting started" = "入门提示"
-        "What's new" = "更新"
         "Run /init to create a CLAUDE.md file with instructions for Claude" = "运行 /init 创建包含 Claude 使用说明的 CLAUDE.md 文件"
         "/release-notes for more" = "/release-notes 更多"
         "Check the Claude Code changelog for updates" = "查看 Claude Code 更新日志"
         "(ctrl+o to expand)" = "(ctrl+o 展开)"
-        'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?o?"正在搜索:":"正在搜索:":o?"搜索完成":"搜索完成"'
-        'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?o?"读取:":"读取:":o?"读:":"读:"'
-        'm===1?"pattern":"patterns"' = 'm===1?"结果 ":"结果  "'
-        'S===1?"file":"files"' = 'S===1?"项 ":"项  "'
-        'HH=f?o?"Listing":"listing":o?"Listed":"listed"' = 'HH=f?o?"列出:":"列出:":o?"已列":"已列"'
-        'F===1?"directory":"directories"' = 'F===1?"目录   ":"目录     "'
-        'status:"Idle",statusColor' = 'status:"闲 ",statusColor'
-        'status:"Working\u2026",statusColor' = 'status:"工作中    ",statusColor'
-        'status:"Waiting",statusColor' = 'status:"等待 ",statusColor'
+        'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?"正在搜索":"已搜索"'
+        'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?"正在读取":"已读取"'
+        'm===1?"pattern":"patterns"' = '"个匹配项"'
+        'S===1?"file":"files"' = '"个文件"'
+        'HH=f?o?"Listing":"listing":o?"Listed":"listed"' = 'HH=f?"正在列出":"已列出"'
+        'F===1?"directory":"directories"' = '"个目录"'
+        'Y=$?f.length===0?"Searching for":"searching for":f.length===0?"Searched for":"searched for"' = 'Y=$?"正在搜索":"已搜索"'
+        'Y=$?f.length===0?"Reading":"reading":f.length===0?"Read":"read"' = 'Y=$?"正在读取":"已读取"'
+        'Y=$?f.length===0?"Listing":"listing":f.length===0?"Listed":"listed"' = 'Y=$?"正在列出":"已列出"'
+        'H===1?"pattern":"patterns"' = '"个匹配项"'
+        'q===1?"file":"files"' = '"个文件"'
+        'A===1?"directory":"directories"' = '"个目录"'
+        'status:"Idle",statusColor' = 'status:"闲",statusColor'
+        'status:"Working\u2026",statusColor' = 'status:"工作中…",statusColor'
+        'status:"Waiting",statusColor' = 'status:"等待",statusColor'
+        'function _x1(H){if(H>=Kx1)return"almost done thinking";if(H>=$x1)return"thinking some more";if(H>=qx1)return"thinking more";if(H>=Hx1)return"still thinking";return"thinking"}' = 'function _x1(H){if(H>=Kx1)return"思考即将完成";if(H>=$x1)return"继续深入思考";if(H>=qx1)return"继续思考";if(H>=Hx1)return"仍在思考";return"思考中"}'
     }
 }
 
@@ -382,6 +388,21 @@ function Patch-ClaudeCliText {
         $bytes = [System.IO.File]::ReadAllBytes($path)
         $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
         $count = 0
+
+        $whatsNew = "What's new"
+        $offset = 0
+        while (($offset = $searchable.IndexOf($whatsNew, $offset, [System.StringComparison]::Ordinal)) -ge 0) {
+            $contextLength = [Math]::Min(256, $searchable.Length - $offset)
+            if ($searchable.Substring($offset, $contextLength).Contains("/release-notes for more")) {
+                $replacement = [System.Text.Encoding]::UTF8.GetBytes("新内容")
+                [System.Array]::Copy($replacement, 0, $bytes, $offset, $replacement.Length)
+                for ($index = $replacement.Length; $index -lt $whatsNew.Length; $index++) {
+                    $bytes[$offset + $index] = 0x20
+                }
+                $count++
+            }
+            $offset += $whatsNew.Length
+        }
 
         foreach ($entry in (Get-ClaudeCliReplacements).GetEnumerator()) {
             $source = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Key)
@@ -407,9 +428,20 @@ function Patch-ClaudeCliText {
         }
 
         $backupPath = "$path.zh-cn-backup"
-        if (-not (Test-Path -LiteralPath $backupPath) -or
-            (Get-Item -LiteralPath $backupPath).Length -ne (Get-Item -LiteralPath $path).Length) {
-            # ponytail: 文件大小用于识别 CLI 升级；若出现同尺寸新版本，再改为版本号比较。
+        $needsBackup = -not (Test-Path -LiteralPath $backupPath)
+        if (-not $needsBackup) {
+            $current = Get-Item -LiteralPath $path
+            $backup = Get-Item -LiteralPath $backupPath
+            $currentVersion = $current.VersionInfo.FileVersion
+            $backupVersion = $backup.VersionInfo.FileVersion
+            $needsBackup = if ($currentVersion -and $backupVersion) {
+                $currentVersion -ne $backupVersion
+            }
+            else {
+                $current.Length -ne $backup.Length
+            }
+        }
+        if ($needsBackup) {
             Copy-Item -LiteralPath $path -Destination $backupPath -Force
         }
         try {
@@ -441,8 +473,8 @@ function Get-ClaudeIdeReplacements {
         "Type something..." = "输入内容……"
         "Type something…" = "输入内容……"
         "Chat about this" = "讨论这段内容"
-        "Computing..." = "处理中……"
-        "Computing…" = "处理中……"
+        "Computing..." = "计算中……"
+        "Computing…" = "计算中……"
         "New conversation" = "新建对话"
         "Open a new conversation in a new tab" = "在新标签页中打开新对话"
         "Yes, allow all edits this session" = "是，本次会话允许所有修改"
@@ -450,7 +482,7 @@ function Get-ClaudeIdeReplacements {
         "Yes, and don't ask again" = "是，不再询问"
         "Yes, allow access to " = "是，允许访问 "
         "Yes, allow " = "是，允许 "
-        "User declined to answer questions" = "用户暂未回答问题"
+        "User declined to answer questions" = "用户拒绝回答问题"
         "Waiting for permission…" = "正在等待授权……"
         "Loading MCP servers…" = "正在加载 MCP 服务器……"
         "Loading context usage…" = "正在加载上下文用量……"
@@ -461,13 +493,12 @@ function Get-ClaudeIdeReplacements {
         "Browser connected" = "浏览器已连接"
         "Connecting to claude.ai/code…" = "正在连接 claude.ai/code……"
         "Loading available plugins…" = "正在加载可用插件……"
-        "Loading marketplaces…" = "正在加载市场……"
+        "Loading marketplaces…" = "正在加载插件市场……"
         "Loading models…" = "正在加载模型……"
         "Loading plugins…" = "正在加载插件……"
-        "Adding marketplace…" = "正在添加市场……"
+        "Adding marketplace…" = "正在添加插件市场……"
         "Loading..." = "加载中……"
         "Connecting…" = "正在连接……"
-        "Not connected" = "未连接"
         "Failed to reconnect" = "重新连接失败"
         "Action completed" = "操作已完成"
         "Login failed" = "登录失败"
@@ -477,7 +508,7 @@ function Get-ClaudeIdeReplacements {
         "Task Completed" = "任务已完成"
         "Task Failed" = "任务失败"
         "Notebook Cell Completed" = "笔记本单元格已完成"
-        "Notebook Cell Failed" = "笔记本单元格失败"
+        "Notebook Cell Failed" = "笔记本单元格执行失败"
         "Terminal Command Failed" = "终端命令失败"
         "Command Failed" = "命令失败"
         "Voice Recording Stopped" = "语音录制已停止"

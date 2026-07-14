@@ -32,6 +32,8 @@ powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShe
 
 Claude CLI/IDE 升级后，固定文字补丁可能被覆盖，重新运行脚本即可。CLI 补丁只做等字节长度的白名单替换，并保留备份。Codex IDE 使用扩展原生中文资源，不修改扩展文件。Codex CLI 的 TUI 固定英文位于原生二进制中，扫描报告会提示，但安装器不会不安全地修改二进制或内部工具 ID。
 
+汉化范围仅限 Claude/Codex 的固定界面文字；命令、参数、路径、技术标识以及 Bash/Git 等工具的实际 stdout/stderr 保持原样。
+
 ## 测试
 
 ```powershell
