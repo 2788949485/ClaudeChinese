@@ -23,7 +23,7 @@ $installerPath = Join-Path $PSScriptRoot "Install-ClaudeChinese-WindowsPowerShel
 New-Item -ItemType Directory -Path (Split-Path -Parent $editorSettingsPath) -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $webviewPath) -Force | Out-Null
 [System.IO.File]::WriteAllText($editorSettingsPath, "{`n    // keep this comment`n    `"editor.fontSize`": 14`n}")
-$originalWebview = 'Type something... | New conversation | Yes, allow all edits this session | Update(${path}) | Added 2 lines, removed 1 line'
+$originalWebview = '"Type something..." | "New conversation" | "Yes, allow all edits this session" | "Waiting for permission…" | "Loading sessions…" | "Checking working directory" | "Connecting to browser…" | "Task Completed" | "Update(${path})" | "Added 2 lines, removed 1 line"'
 [System.IO.File]::WriteAllText($webviewPath, $originalWebview)
 [System.IO.File]::WriteAllText((Join-Path $extensionPath "extension.js"), "Computing...")
 
@@ -34,6 +34,11 @@ try {
     $env:USERPROFILE = $homePath
     $env:HOME = $homePath
     $env:APPDATA = $appDataPath
+
+    $scanReport = & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target Claude -ScanEnglishText | Out-String
+    if ($LASTEXITCODE -ne 0 -or $scanReport -notmatch "Waiting for permission") {
+        throw "英文状态扫描报告未发现测试文案"
+    }
 
     & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target All -ExperimentalToolText
     if ($LASTEXITCODE -ne 0) { throw "首次安装失败" }
@@ -47,6 +52,8 @@ try {
         throw "Codex IDE locale 未写入"
     }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "输入内容") { throw "Claude IDE 补丁未生效" }
+    if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "正在等待授权") { throw "Claude 状态文字补丁未生效" }
+    if ([System.IO.File]::ReadAllText($webviewPath) -match "Task Completed") { throw "Claude 状态英文仍有残留" }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch '更新\(\$\{path\}\)') {
         throw "Claude 实验性工具文字补丁未生效"
     }
@@ -67,7 +74,7 @@ try {
 
     & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -RestoreIdePatch
     if ($LASTEXITCODE -ne 0) { throw "恢复失败" }
-    if ((Get-Content $webviewPath -Raw) -ne $originalWebview) { throw "恢复内容不一致" }
+    if ([System.IO.File]::ReadAllText($webviewPath) -ne $originalWebview) { throw "恢复内容不一致" }
 
     Write-Host "Installer test OK" -ForegroundColor Green
 }

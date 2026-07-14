@@ -19,6 +19,9 @@
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1 -RestoreIdePatch
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1 -ScanEnglishText
 #>
 
 [CmdletBinding()]
@@ -28,6 +31,7 @@ param(
     [switch]$SkipIdePatch,
     [switch]$ExperimentalToolText,
     [switch]$RestoreIdePatch,
+    [switch]$ScanEnglishText,
     [switch]$Check
 )
 
@@ -329,17 +333,22 @@ function Restore-ClaudeIdeBackups {
     }
 }
 
-function Patch-ClaudeIdeText {
-    param([switch]$EnableExperimentalToolText)
+function Get-ClaudeIdeScriptPaths {
+    param([Parameter(Mandatory)]$Directory)
 
-    Write-Section "修补 Claude Code IDE 固定文字"
-    $directories = @(Get-ClaudeExtensionDirectories)
-    if ($directories.Count -eq 0) {
-        Write-Host "没有找到 Claude Code IDE 扩展，已跳过界面补丁。" -ForegroundColor Yellow
-        return
+    $paths = @(
+        (Join-Path $Directory.FullName "extension.js"),
+        (Join-Path $Directory.FullName "webview\index.js")
+    )
+    $assetsPath = Join-Path $Directory.FullName "webview\assets"
+    if (Test-Path -LiteralPath $assetsPath) {
+        $paths += @(Get-ChildItem $assetsPath -File -Filter "*.js" | Select-Object -ExpandProperty FullName)
     }
+    $paths | Select-Object -Unique
+}
 
-    $replacements = [ordered]@{
+function Get-ClaudeIdeReplacements {
+    [ordered]@{
         "Type something..." = "输入内容……"
         "Type something…" = "输入内容……"
         "Chat about this" = "讨论这段内容"
@@ -353,21 +362,112 @@ function Patch-ClaudeIdeText {
         "Yes, allow access to " = "是，允许访问 "
         "Yes, allow " = "是，允许 "
         "User declined to answer questions" = "用户暂未回答问题"
+        "Waiting for permission…" = "正在等待授权……"
+        "Loading MCP servers…" = "正在加载 MCP 服务器……"
+        "Loading context usage…" = "正在加载上下文用量……"
+        "Loading usage data…" = "正在加载用量数据……"
+        "Loading sessions…" = "正在加载会话……"
+        "Checking working directory" = "正在检查工作目录"
+        "Connecting to browser…" = "正在连接浏览器……"
+        "Browser connected" = "浏览器已连接"
+        "Connecting to claude.ai/code…" = "正在连接 claude.ai/code……"
+        "Loading available plugins…" = "正在加载可用插件……"
+        "Loading marketplaces…" = "正在加载市场……"
+        "Loading models…" = "正在加载模型……"
+        "Loading plugins…" = "正在加载插件……"
+        "Adding marketplace…" = "正在添加市场……"
+        "Loading..." = "加载中……"
+        "Connecting…" = "正在连接……"
+        "Not connected" = "未连接"
+        "Failed to reconnect" = "重新连接失败"
+        "Action completed" = "操作已完成"
+        "Login failed" = "登录失败"
+        "Edit failed" = "编辑失败"
+        "Navigation completed" = "导航已完成"
+        "Rename failed to compute edits" = "重命名无法计算编辑内容"
+        "Task Completed" = "任务已完成"
+        "Task Failed" = "任务失败"
+        "Notebook Cell Completed" = "笔记本单元格已完成"
+        "Notebook Cell Failed" = "笔记本单元格失败"
+        "Terminal Command Failed" = "终端命令失败"
+        "Command Failed" = "命令失败"
+        "Voice Recording Stopped" = "语音录制已停止"
     }
+}
+
+function Show-EnglishStatusReport {
+    Write-Section "英文状态残留扫描报告"
+    $statusPattern = '(?i)\b(loading|connecting|connected|working|waiting|checking|processing|computing|completed|failed|running|starting|stopped|finished|interrupt|retrying)\b'
+    $literalPatterns = @(
+        '"(?<text>[A-Za-z][A-Za-z0-9 ,.''…!?()/:+&-]{2,120})"',
+        '''(?<text>[A-Za-z][A-Za-z0-9 ,.''…!?()/:+&-]{2,120})'''
+    )
+
+    if ($Target -in @("All", "Claude")) {
+        $directories = @(Get-ClaudeExtensionDirectories)
+        if ($directories.Count -eq 0) {
+            Write-Host "Claude IDE：未找到扩展。" -ForegroundColor Yellow
+        }
+        foreach ($directory in $directories) {
+            $allContent = ""
+            $phrases = foreach ($path in Get-ClaudeIdeScriptPaths -Directory $directory) {
+                if (-not (Test-Path -LiteralPath $path)) { continue }
+                $content = [System.IO.File]::ReadAllText($path)
+                $allContent += $content
+                foreach ($pattern in $literalPatterns) {
+                    foreach ($match in [regex]::Matches($content, $pattern)) {
+                        $text = $match.Groups["text"].Value
+                        $looksInternal = $text -match '^[A-Za-z]+$' -or $text -match '^[a-z]+(?:[._-][a-z]+)+$' -or $text -cmatch '^[A-Z_]+$'
+                        if (-not $looksInternal -and $text -match $statusPattern -and $text -match '[a-z]{3}') { $text }
+                    }
+                }
+            }
+            $whitelistHits = foreach ($text in (Get-ClaudeIdeReplacements).Keys) {
+                $count = ([regex]::Matches($allContent, [regex]::Escape([string]$text))).Count
+                if ($count -gt 0) { "[$count] $text" }
+            }
+            Write-Host "Claude IDE：$($directory.Name)" -ForegroundColor Cyan
+            Write-Host "  白名单待翻译：$(@($whitelistHits).Count) 条" -ForegroundColor Cyan
+            $whitelistHits | ForEach-Object { Write-Host "    $_" }
+
+            $whitelist = @((Get-ClaudeIdeReplacements).Keys)
+            $groups = @($phrases | Where-Object { $whitelist -notcontains $_ } | Group-Object | Sort-Object Count -Descending)
+            Write-Host "  待人工确认：$($groups.Count) 条（仅报告，不自动替换；最多显示 40 条）" -ForegroundColor Yellow
+            $groups | Select-Object -First 40 | ForEach-Object {
+                Write-Host "    [$($_.Count)] $($_.Name)"
+            }
+        }
+    }
+
+    if ($Target -in @("All", "Codex")) {
+        $command = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command) {
+            Write-Host "Codex CLI：检测到 $($command.Source)" -ForegroundColor Cyan
+            Write-Host "  TUI 固定英文位于原生二进制；官方无 locale/language 配置，本安装器不修改二进制。" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "Codex CLI：未找到命令。" -ForegroundColor Yellow
+        }
+        Write-Host "Codex IDE：继续使用扩展自带的 zh-CN 资源，不全局替换资源包或内部 ID。" -ForegroundColor Cyan
+    }
+}
+
+function Patch-ClaudeIdeText {
+    param([switch]$EnableExperimentalToolText)
+
+    Write-Section "修补 Claude Code IDE 固定文字"
+    $directories = @(Get-ClaudeExtensionDirectories)
+    if ($directories.Count -eq 0) {
+        Write-Host "没有找到 Claude Code IDE 扩展，已跳过界面补丁。" -ForegroundColor Yellow
+        return
+    }
+
+    $replacements = Get-ClaudeIdeReplacements
     $changedFiles = 0
     $replacementCount = 0
 
     foreach ($directory in $directories) {
-        $candidatePaths = @(
-            (Join-Path $directory.FullName "extension.js"),
-            (Join-Path $directory.FullName "webview\index.js")
-        )
-        $assetsPath = Join-Path $directory.FullName "webview\assets"
-        if (Test-Path -LiteralPath $assetsPath) {
-            $candidatePaths += @(Get-ChildItem $assetsPath -File -Filter "*.js" | Select-Object -ExpandProperty FullName)
-        }
-
-        foreach ($path in $candidatePaths | Select-Object -Unique) {
+        foreach ($path in Get-ClaudeIdeScriptPaths -Directory $directory) {
             if (-not (Test-Path -LiteralPath $path)) {
                 continue
             }
@@ -500,6 +600,10 @@ try {
     }
     if ($Check) {
         Test-ChineseSetup
+        exit 0
+    }
+    if ($ScanEnglishText) {
+        Show-EnglishStatusReport
         exit 0
     }
 
