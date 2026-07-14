@@ -169,6 +169,13 @@ function Get-ClaudeExtensionDirectories {
     }
 }
 
+function Get-ClaudeCliBinaryPaths {
+    @(
+        (Join-Path $HOME ".local\bin\claude.exe"),
+        (Join-Path $env:APPDATA "npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe")
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -Unique
+}
+
 function Backup-FileOnce {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -310,8 +317,18 @@ function Update-CodexIdeLocale {
 }
 
 function Restore-ClaudeIdeBackups {
-    Write-Section "恢复 Claude Code IDE 扩展备份"
+    Write-Section "恢复 Claude Code 界面补丁备份"
     $restored = 0
+
+    foreach ($path in Get-ClaudeCliBinaryPaths) {
+        $backupPath = "$path.zh-cn-backup"
+        if (Test-Path -LiteralPath $backupPath) {
+            Copy-Item -LiteralPath $backupPath -Destination $path -Force
+            Remove-Item -LiteralPath $backupPath -Force
+            Write-Host "已恢复：$path" -ForegroundColor Green
+            $restored++
+        }
+    }
 
     foreach ($directory in @(Get-ClaudeExtensionDirectories -AllVersions)) {
         $backups = Get-ChildItem -LiteralPath $directory.FullName -Recurse -File `
@@ -330,6 +347,78 @@ function Restore-ClaudeIdeBackups {
     }
     else {
         Write-Host "已恢复 $restored 个文件，请重新启动编辑器。" -ForegroundColor Green
+    }
+}
+
+function Get-ClaudeCliReplacements {
+    [ordered]@{
+        "Tips for getting started" = "入门提示"
+        "What's new" = "更新"
+        "Run /init to create a CLAUDE.md file with instructions for Claude" = "运行 /init 创建包含 Claude 使用说明的 CLAUDE.md 文件"
+        "/release-notes for more" = "/release-notes 更多"
+        "Check the Claude Code changelog for updates" = "查看 Claude Code 更新日志"
+        "(ctrl+o to expand)" = "(ctrl+o 展开)"
+        'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?o?"正在搜索:":"正在搜索:":o?"搜索完成":"搜索完成"'
+        'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?o?"读取:":"读取:":o?"读:":"读:"'
+        'm===1?"pattern":"patterns"' = 'm===1?"结果 ":"结果  "'
+        'S===1?"file":"files"' = 'S===1?"项 ":"项  "'
+        'HH=f?o?"Listing":"listing":o?"Listed":"listed"' = 'HH=f?o?"列出:":"列出:":o?"已列":"已列"'
+        'F===1?"directory":"directories"' = 'F===1?"目录   ":"目录     "'
+        'status:"Idle",statusColor' = 'status:"闲 ",statusColor'
+        'status:"Working\u2026",statusColor' = 'status:"工作中    ",statusColor'
+        'status:"Waiting",statusColor' = 'status:"等待 ",statusColor'
+    }
+}
+
+function Patch-ClaudeCliText {
+    Write-Section "修补 Claude Code CLI 固定文字"
+    $paths = @(Get-ClaudeCliBinaryPaths)
+    if ($paths.Count -eq 0) {
+        Write-Host "没有找到 Claude Code CLI，已跳过界面补丁。" -ForegroundColor Yellow
+        return
+    }
+
+    foreach ($path in $paths) {
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
+        $count = 0
+
+        foreach ($entry in (Get-ClaudeCliReplacements).GetEnumerator()) {
+            $source = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Key)
+            $replacement = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Value)
+            if ($replacement.Length -gt $source.Length) {
+                throw "CLI 译文长度超过原文：$($entry.Key)"
+            }
+
+            $offset = 0
+            while (($offset = $searchable.IndexOf([string]$entry.Key, $offset, [System.StringComparison]::Ordinal)) -ge 0) {
+                [System.Array]::Copy($replacement, 0, $bytes, $offset, $replacement.Length)
+                for ($index = $replacement.Length; $index -lt $source.Length; $index++) {
+                    $bytes[$offset + $index] = 0x20
+                }
+                $offset += $source.Length
+                $count++
+            }
+        }
+
+        if ($count -eq 0) {
+            Write-Host "没有发现尚未替换的 CLI 白名单英文：$path" -ForegroundColor Yellow
+            continue
+        }
+
+        $backupPath = "$path.zh-cn-backup"
+        if (-not (Test-Path -LiteralPath $backupPath) -or
+            (Get-Item -LiteralPath $backupPath).Length -ne (Get-Item -LiteralPath $path).Length) {
+            # ponytail: 文件大小用于识别 CLI 升级；若出现同尺寸新版本，再改为版本号比较。
+            Copy-Item -LiteralPath $path -Destination $backupPath -Force
+        }
+        try {
+            [System.IO.File]::WriteAllBytes($path, $bytes)
+        }
+        catch [System.IO.IOException] {
+            throw "Claude Code CLI 正在运行，无法修改：$path。请关闭所有 Claude Code 窗口后重试。"
+        }
+        Write-Host "已修改：$path（$count 处）" -ForegroundColor Green
     }
 }
 
@@ -610,6 +699,7 @@ try {
     if ($Target -in @("All", "Claude")) {
         Update-ClaudeSettings
         Update-ClaudeInstructions
+        Patch-ClaudeCliText
         if (-not $SkipIdePatch) {
             Patch-ClaudeIdeText -EnableExperimentalToolText:$ExperimentalToolText
         }
@@ -623,7 +713,7 @@ try {
     Write-Host "请彻底关闭并重新打开编辑器，然后新建会话测试。" -ForegroundColor Green
     Write-Host "检查命令：powershell -File `"$PSCommandPath`" -Target $Target -Check"
     if ($Target -in @("All", "Claude") -and -not $SkipIdePatch) {
-        Write-Host "Claude 扩展升级后可能需要重新运行本脚本。" -ForegroundColor Yellow
+        Write-Host "Claude CLI 或扩展升级后可能需要重新运行本脚本。" -ForegroundColor Yellow
     }
 }
 catch {

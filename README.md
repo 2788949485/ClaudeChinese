@@ -23,14 +23,14 @@ powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShe
 # 检查配置
 powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1 -Check
 
-# 恢复 Claude IDE 文件补丁
+# 恢复 Claude CLI/IDE 文件补丁
 powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1 -RestoreIdePatch
 
 # 扫描 Claude/Codex 可见英文状态残留
 powershell -ExecutionPolicy Bypass -File .\Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1 -ScanEnglishText
 ```
 
-Claude 扩展升级后，固定文字补丁可能被覆盖，重新运行脚本即可。Codex IDE 使用扩展原生中文资源，不修改扩展文件。Codex CLI 的 TUI 固定英文位于原生二进制中，扫描报告会提示，但安装器不会不安全地修改二进制或内部工具 ID。
+Claude CLI/IDE 升级后，固定文字补丁可能被覆盖，重新运行脚本即可。CLI 补丁只做等字节长度的白名单替换，并保留备份。Codex IDE 使用扩展原生中文资源，不修改扩展文件。Codex CLI 的 TUI 固定英文位于原生二进制中，扫描报告会提示，但安装器不会不安全地修改二进制或内部工具 ID。
 
 ## 测试
 

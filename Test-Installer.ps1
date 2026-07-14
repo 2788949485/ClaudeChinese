@@ -18,14 +18,18 @@ $appDataPath = Join-Path $resolvedTestRoot "appdata"
 $editorSettingsPath = Join-Path $appDataPath "Code\User\settings.json"
 $extensionPath = Join-Path $homePath ".vscode\extensions\anthropic.claude-code-test"
 $webviewPath = Join-Path $extensionPath "webview\index.js"
+$cliPath = Join-Path $appDataPath "npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
 $installerPath = Join-Path $PSScriptRoot "Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1"
 
 New-Item -ItemType Directory -Path (Split-Path -Parent $editorSettingsPath) -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $webviewPath) -Force | Out-Null
+New-Item -ItemType Directory -Path (Split-Path -Parent $cliPath) -Force | Out-Null
 [System.IO.File]::WriteAllText($editorSettingsPath, "{`n    // keep this comment`n    `"editor.fontSize`": 14`n}")
 $originalWebview = '"Type something..." | "New conversation" | "Yes, allow all edits this session" | "Waiting for permission…" | "Loading sessions…" | "Checking working directory" | "Connecting to browser…" | "Task Completed" | "Update(${path})" | "Added 2 lines, removed 1 line"'
 [System.IO.File]::WriteAllText($webviewPath, $originalWebview)
 [System.IO.File]::WriteAllText((Join-Path $extensionPath "extension.js"), "Computing...")
+$originalCli = 'Tips for getting started | What''s new | Run /init to create a CLAUDE.md file with instructions for Claude | /release-notes for more | (ctrl+o to expand) | HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for" | HH=f?o?"Reading":"reading":o?"Read":"read" | m===1?"pattern":"patterns" | S===1?"file":"files" | HH=f?o?"Listing":"listing":o?"Listed":"listed" | F===1?"directory":"directories" | status:"Idle",statusColor | status:"Working\u2026",statusColor | status:"Waiting",statusColor'
+[System.IO.File]::WriteAllText($cliPath, $originalCli)
 
 $oldUserProfile = $env:USERPROFILE
 $oldHome = $env:HOME
@@ -54,12 +58,20 @@ try {
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "输入内容") { throw "Claude IDE 补丁未生效" }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "正在等待授权") { throw "Claude 状态文字补丁未生效" }
     if ([System.IO.File]::ReadAllText($webviewPath) -match "Task Completed") { throw "Claude 状态英文仍有残留" }
+    if ([System.IO.File]::ReadAllText($cliPath) -match "Tips for getting started|What's new") {
+        throw "Claude CLI 欢迎页补丁未生效"
+    }
+    if ([System.IO.File]::ReadAllText($cliPath) -match "ctrl\+o to expand|Searching for|patterns|Reading|files|Listing|directories|Working\\u2026|Waiting") {
+        throw "Claude CLI 工具摘要补丁未生效"
+    }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch '更新\(\$\{path\}\)') {
         throw "Claude 实验性工具文字补丁未生效"
     }
 
     $firstClaudeRules = Get-Content (Join-Path $homePath ".claude\CLAUDE.md") -Raw
     $firstCodexRules = Get-Content (Join-Path $homePath ".codex\AGENTS.md") -Raw
+    $partiallyRevertedCli = [System.IO.File]::ReadAllText($cliPath).Replace('(ctrl+o 展开)   ', '(ctrl+o to expand)')
+    [System.IO.File]::WriteAllText($cliPath, $partiallyRevertedCli)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target All
     if ($LASTEXITCODE -ne 0) { throw "重复安装失败" }
     if ((Get-Content (Join-Path $homePath ".claude\CLAUDE.md") -Raw) -ne $firstClaudeRules) {
@@ -75,6 +87,7 @@ try {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -RestoreIdePatch
     if ($LASTEXITCODE -ne 0) { throw "恢复失败" }
     if ([System.IO.File]::ReadAllText($webviewPath) -ne $originalWebview) { throw "恢复内容不一致" }
+    if ([System.IO.File]::ReadAllText($cliPath) -ne $originalCli) { throw "CLI 恢复内容不一致" }
 
     Write-Host "Installer test OK" -ForegroundColor Green
 }
