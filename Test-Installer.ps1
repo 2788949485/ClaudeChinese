@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Path (Split-Path -Parent $cliPath) -Force | Out-Nu
 $originalWebview = '"Type something..." | "New conversation" | "Yes, allow all edits this session" | "Waiting for permission…" | "Loading sessions…" | "Checking working directory" | "Connecting to browser…" | "Task Completed" | "Update(${path})" | "Added 2 lines, removed 1 line"'
 [System.IO.File]::WriteAllText($webviewPath, $originalWebview)
 [System.IO.File]::WriteAllText((Join-Path $extensionPath "extension.js"), "Computing...")
-$originalCli = 'title:"Tips for getting started" | title:"What''s new" | text:"Run /init to create a CLAUDE.md file with instructions for Claude" | "/release-notes for more" | "Check the Claude Code changelog for updates" | "(ctrl+o to expand)" | TABLE: Tips for getting started | What''s new | Run /init to create a CLAUDE.md file with instructions for Claude | (ctrl+o to expand) | What''s new in Bun v: | HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for" | HH=f?o?"Reading":"reading":o?"Read":"read" | m===1?"pattern":"patterns" | S===1?"file":"files" | HH=f?o?"Listing":"listing":o?"Listed":"listed" | F===1?"directory":"directories" | Y=$?f.length===0?"Searching for":"searching for":f.length===0?"Searched for":"searched for" | Y=$?f.length===0?"Reading":"reading":f.length===0?"Read":"read" | Y=$?f.length===0?"Listing":"listing":f.length===0?"Listed":"listed" | H===1?"pattern":"patterns" | q===1?"file":"files" | A===1?"directory":"directories" | status:"Idle",statusColor | status:"Working\u2026",statusColor | status:"Waiting",statusColor | function _x1(H){if(H>=Kx1)return"almost done thinking";if(H>=$x1)return"thinking some more";if(H>=qx1)return"thinking more";if(H>=Hx1)return"still thinking";return"thinking"}'
+$originalCli = 'title:"Tips for getting started" | title:"What''s new",lines:q,footer:q.length>0? | text:"Run /init to create a CLAUDE.md file with instructions for Claude" | footer:q.length>0?"/release-notes for more":void 0 | "Check the Claude Code changelog for updates" | "(ctrl+o to expand)" | TABLE: Tips for getting started | What''s new | Run /init to create a CLAUDE.md file with instructions for Claude | (ctrl+o to expand) | What''s new in Bun v: | HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for" | HH=f?o?"Reading":"reading":o?"Read":"read" | m===1?"pattern":"patterns" | S===1?"file":"files" | HH=f?o?"Listing":"listing":o?"Listed":"listed" | F===1?"directory":"directories" | Y=$?f.length===0?"Searching for":"searching for":f.length===0?"Searched for":"searched for" | Y=$?f.length===0?"Reading":"reading":f.length===0?"Read":"read" | Y=$?f.length===0?"Listing":"listing":f.length===0?"Listed":"listed" | H===1?"pattern":"patterns" | q===1?"file":"files" | A===1?"directory":"directories" | status:"Idle",statusColor | status:"Working\u2026",statusColor | status:"Waiting",statusColor | function _x1(H){if(H>=Kx1)return"almost done thinking";if(H>=$x1)return"thinking some more";if(H>=qx1)return"thinking more";if(H>=Hx1)return"still thinking";return"thinking"}'
 [System.IO.File]::WriteAllText($cliPath, $originalCli)
 
 $oldUserProfile = $env:USERPROFILE
@@ -67,13 +67,16 @@ try {
     if (-not [System.IO.File]::ReadAllText($cliPath).Contains("What's new in Bun v:")) {
         throw "Claude CLI 补丁误改了 Bun 内部文字"
     }
-    if ([System.IO.File]::ReadAllText($cliPath) -match '"\(ctrl\+o to expand\)"|Searching for|patterns|Reading|files|Listing|directories|Working\\u2026|Waiting') {
+    if ([System.IO.File]::ReadAllText($cliPath) -match 'Searching for|patterns|Reading|files|Listing|directories') {
         throw "Claude CLI 工具摘要补丁未生效"
     }
-    foreach ($text in @("正在搜索", "个匹配项", "正在读取", "个文件", "正在列出", "个目录", "工作中…", "等待")) {
+    foreach ($text in @('\u5165\u95e8\u63d0\u793a', '\u66f4\u65b0', '\u6b63\u5728\u641c\u7d22', '\u4e2a\u5339\u914d\u9879', '\u8bfb\u53d6', '\u4e2a\u6587\u4ef6', '\u5217\u51fa', '\u4e2a\u76ee\u5f55', '\u601d\u8003\u4e2d')) {
         if (-not [System.IO.File]::ReadAllText($cliPath).Contains($text)) {
-            throw "Claude CLI 译文缺失：$text"
+            throw "Claude CLI ASCII 转义译文缺失：$text"
         }
+    }
+    if ([System.IO.File]::ReadAllText($cliPath).ToCharArray() | Where-Object { [int]$_ -gt 127 } | Select-Object -First 1) {
+        throw "Claude CLI 补丁写入了非 ASCII 字符"
     }
     if ([System.IO.File]::ReadAllText($cliPath) -match 'almost done thinking|thinking some more|thinking more|still thinking') {
         throw "Claude CLI 思考阶段补丁未生效"
@@ -84,7 +87,7 @@ try {
 
     $firstClaudeRules = Get-Content (Join-Path $homePath ".claude\CLAUDE.md") -Raw
     $firstCodexRules = Get-Content (Join-Path $homePath ".codex\AGENTS.md") -Raw
-    $partiallyRevertedCli = [System.IO.File]::ReadAllText($cliPath).Replace('(ctrl+o 展开)   ', '(ctrl+o to expand)')
+    $partiallyRevertedCli = [System.IO.File]::ReadAllText($cliPath).Replace('\u5165\u95e8\u63d0\u793a', 'Tips for getting started')
     [System.IO.File]::WriteAllText($cliPath, $partiallyRevertedCli)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target All
     if ($LASTEXITCODE -ne 0) { throw "重复安装失败" }

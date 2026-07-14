@@ -352,28 +352,24 @@ function Restore-ClaudeIdeBackups {
 
 function Get-ClaudeCliReplacements {
     [ordered]@{
-        'title:"Tips for getting started"' = 'title:"入门提示"'
-        'title:"What''s new"' = 'title:"新内容"'
-        'text:"Run /init to create a CLAUDE.md file with instructions for Claude"' = 'text:"运行 /init 创建包含 Claude 使用说明的 CLAUDE.md 文件"'
-        '"/release-notes for more"' = '"/release-notes 更多"'
-        '"Check the Claude Code changelog for updates"' = '"查看 Claude Code 更新日志"'
-        '"(ctrl+o to expand)"' = '"(ctrl+o 展开)"'
-        'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?"正在搜索":"已搜索"'
-        'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?"正在读取":"已读取"'
-        'm===1?"pattern":"patterns"' = '"个匹配项"'
-        'S===1?"file":"files"' = '"个文件"'
-        'HH=f?o?"Listing":"listing":o?"Listed":"listed"' = 'HH=f?"正在列出":"已列出"'
-        'F===1?"directory":"directories"' = '"个目录"'
-        'Y=$?f.length===0?"Searching for":"searching for":f.length===0?"Searched for":"searched for"' = 'Y=$?"正在搜索":"已搜索"'
-        'Y=$?f.length===0?"Reading":"reading":f.length===0?"Read":"read"' = 'Y=$?"正在读取":"已读取"'
-        'Y=$?f.length===0?"Listing":"listing":f.length===0?"Listed":"listed"' = 'Y=$?"正在列出":"已列出"'
-        'H===1?"pattern":"patterns"' = '"个匹配项"'
-        'q===1?"file":"files"' = '"个文件"'
-        'A===1?"directory":"directories"' = '"个目录"'
-        'status:"Idle",statusColor' = 'status:"闲",statusColor'
-        'status:"Working\u2026",statusColor' = 'status:"工作中…",statusColor'
-        'status:"Waiting",statusColor' = 'status:"等待",statusColor'
-        'function _x1(H){if(H>=Kx1)return"almost done thinking";if(H>=$x1)return"thinking some more";if(H>=qx1)return"thinking more";if(H>=Hx1)return"still thinking";return"thinking"}' = 'function _x1(H){if(H>=Kx1)return"思考即将完成";if(H>=$x1)return"继续深入思考";if(H>=qx1)return"继续思考";if(H>=Hx1)return"仍在思考";return"思考中"}'
+        'title:"Tips for getting started"' = 'title:"\u5165\u95e8\u63d0\u793a"'
+        'title:"What''s new",lines:q,footer:q.length>0?' = 'title:"\u66f4\u65b0",lines:q,footer:q.length?'
+        'text:"Run /init to create a CLAUDE.md file with instructions for Claude"' = 'text:"\u8fd0\u884c /init \u521b\u5efa CLAUDE.md"'
+        'footer:q.length>0?"/release-notes for more":void 0' = 'footer:q[0]?"\u66f4\u591a /release-notes":void 0'
+        '"Check the Claude Code changelog for updates"' = '"\u67e5\u770b\u66f4\u65b0\u65e5\u5fd7"'
+        'HH=f?o?"Searching for":"searching for":o?"Searched for":"searched for"' = 'HH=f?"\u6b63\u5728\u641c\u7d22":"\u5df2\u641c\u7d22"'
+        'HH=f?o?"Reading":"reading":o?"Read":"read"' = 'HH=f?"\u8bfb\u53d6":"\u5df2\u8bfb"'
+        'm===1?"pattern":"patterns"' = '"\u4e2a\u5339\u914d\u9879"'
+        'S===1?"file":"files"' = '"\u4e2a\u6587\u4ef6"'
+        'HH=f?o?"Listing":"listing":o?"Listed":"listed"' = 'HH=f?"\u5217\u51fa":"\u5df2\u5217"'
+        'F===1?"directory":"directories"' = '"\u4e2a\u76ee\u5f55"'
+        'Y=$?f.length===0?"Searching for":"searching for":f.length===0?"Searched for":"searched for"' = 'Y=$?"\u6b63\u5728\u641c\u7d22":"\u5df2\u641c\u7d22"'
+        'Y=$?f.length===0?"Reading":"reading":f.length===0?"Read":"read"' = 'Y=$?"\u8bfb\u53d6":"\u5df2\u8bfb"'
+        'Y=$?f.length===0?"Listing":"listing":f.length===0?"Listed":"listed"' = 'Y=$?"\u5217\u51fa":"\u5df2\u5217"'
+        'H===1?"pattern":"patterns"' = '"\u4e2a\u5339\u914d\u9879"'
+        'q===1?"file":"files"' = '"\u4e2a\u6587\u4ef6"'
+        'A===1?"directory":"directories"' = '"\u4e2a\u76ee\u5f55"'
+        'function _x1(H){if(H>=Kx1)return"almost done thinking";if(H>=$x1)return"thinking some more";if(H>=qx1)return"thinking more";if(H>=Hx1)return"still thinking";return"thinking"}' = 'function _x1(H){return H>=Kx1?"\u5373\u5c06\u5b8c\u6210":H>=qx1?"\u6df1\u5165\u601d\u8003":"\u601d\u8003\u4e2d"}'
     }
 }
 
@@ -391,6 +387,9 @@ function Patch-ClaudeCliText {
         $count = 0
 
         foreach ($entry in (Get-ClaudeCliReplacements).GetEnumerator()) {
+            if ([System.Text.Encoding]::ASCII.GetString([System.Text.Encoding]::ASCII.GetBytes([string]$entry.Value)) -ne [string]$entry.Value) {
+                throw "CLI 译文必须使用 ASCII 转义：$($entry.Key)"
+            }
             $source = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Key)
             $replacement = [System.Text.Encoding]::UTF8.GetBytes([string]$entry.Value)
             if ($replacement.Length -gt $source.Length) {
@@ -406,6 +405,7 @@ function Patch-ClaudeCliText {
                 $offset += $source.Length
                 $count++
             }
+            $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
         }
 
         if ($count -eq 0) {
