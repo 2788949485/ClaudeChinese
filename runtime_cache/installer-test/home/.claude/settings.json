@@ -1,0 +1,20 @@
+{
+    "$schema":  "https://json.schemastore.org/claude-code-settings.json",
+    "language":  "chinese",
+    "spinnerTipsEnabled":  false,
+    "spinnerVerbs":  {
+                         "mode":  "replace",
+                         "verbs":  [
+                                       "思考中",
+                                       "分析中",
+                                       "规划中",
+                                       "处理中",
+                                       "搜索中",
+                                       "读取中",
+                                       "修改中",
+                                       "构建中",
+                                       "测试中",
+                                       "执行中"
+                                   ]
+                     }
+}

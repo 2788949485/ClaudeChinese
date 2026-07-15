@@ -283,7 +283,9 @@ function Update-ClaudeInstructions {
 function Update-CodexInstructions {
     Write-Section "配置 Codex 全局中文规则"
 
-    $path = Join-Path $HOME ".codex\AGENTS.md"
+    $codexDir = Join-Path $HOME ".codex"
+    $path = Join-Path $codexDir "AGENTS.md"
+    $overridePath = Join-Path $codexDir "AGENTS.override.md"
     $rules = @'
 # 全局中文输出规则
 
@@ -293,26 +295,50 @@ function Update-CodexInstructions {
 
     Set-MarkedBlock -Path $path -Name "CHINESE-OUTPUT-RULES" -Content $rules
     Write-Host "已更新：$path" -ForegroundColor Green
+
+    if (Test-Path -LiteralPath $overridePath) {
+        Set-MarkedBlock -Path $overridePath -Name "CHINESE-OUTPUT-RULES" -Content $rules
+        Write-Host "检测到 $overridePath，已同步写入中文规则（否则 AGENTS.md 会被它完全覆盖）。" -ForegroundColor Yellow
+        Write-Host "已更新：$overridePath" -ForegroundColor Green
+    }
+}
+
+function Test-CodexExtensionInstalled {
+    param([Parameter(Mandatory)]$Profile)
+
+    if (-not (Test-Path -LiteralPath $Profile.ExtensionRoot)) {
+        return $false
+    }
+
+    Get-ChildItem -LiteralPath $Profile.ExtensionRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "openai.chatgpt-*" } |
+        Select-Object -First 1
 }
 
 function Update-CodexIdeLocale {
     Write-Section "启用 Codex IDE 原生中文资源"
     $updated = 0
+    $skipped = @()
 
     foreach ($profile in Get-EditorProfiles) {
-        $hasEditor = (Test-Path -LiteralPath $profile.ExtensionRoot) -or
-            (Test-Path -LiteralPath (Split-Path -Parent $profile.SettingsPath))
-        if (-not $hasEditor) {
+        $extension = Test-CodexExtensionInstalled -Profile $profile
+        if (-not $extension) {
+            if (Test-Path -LiteralPath $profile.SettingsPath) {
+                $skipped += "$($profile.Name)（未安装 Codex 扩展）"
+            }
             continue
         }
 
         Set-JsoncStringProperty -Path $profile.SettingsPath -Name "chatgpt.localeOverride" -Value "zh-CN"
-        Write-Host "已更新 $($profile.Name)：$($profile.SettingsPath)" -ForegroundColor Green
+        Write-Host "已更新 $($profile.Name) [$($extension.Name)]：$($profile.SettingsPath)" -ForegroundColor Green
         $updated++
     }
 
+    if ($skipped.Count -gt 0) {
+        Write-Host "跳过：$($skipped -join '；')" -ForegroundColor Yellow
+    }
     if ($updated -eq 0) {
-        Write-Host "未找到受支持的编辑器，已跳过 IDE 设置。" -ForegroundColor Yellow
+        Write-Host "未找到安装了 Codex 扩展的编辑器，已跳过 IDE 设置。" -ForegroundColor Yellow
     }
 }
 
@@ -353,7 +379,7 @@ function Restore-ClaudeIdeBackups {
 function Get-ClaudeCliReplacements {
     [ordered]@{
         'title:"Tips for getting started"' = 'title:"\u5165\u95e8\u63d0\u793a"'
-        'title:"What''s new",lines:q,footer:q.length>0?' = 'title:"\u66f4\u65b0",lines:q,footer:q.length?'
+        'title:"What''s new",lines:q,footer:q.length>0?' = 'title:"\u65b0\u7248",lines:q,footer:q.length?'
         'text:"Run /init to create a CLAUDE.md file with instructions for Claude"' = 'text:"\u8fd0\u884c /init \u521b\u5efa CLAUDE.md"'
         'footer:q.length>0?"/release-notes for more":void 0' = 'footer:q[0]?"\u66f4\u591a /release-notes":void 0'
         '"Check the Claude Code changelog for updates"' = '"\u67e5\u770b\u66f4\u65b0\u65e5\u5fd7"'
@@ -386,6 +412,15 @@ function Patch-ClaudeCliText {
         $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
         $count = 0
 
+        $backupPath = "$path.zh-cn-backup"
+        $baselineSearchable = if (Test-Path -LiteralPath $backupPath) {
+            [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($backupPath))
+        }
+        else {
+            $searchable
+        }
+        $driftedPatterns = @()
+
         foreach ($entry in (Get-ClaudeCliReplacements).GetEnumerator()) {
             if ([System.Text.Encoding]::ASCII.GetString([System.Text.Encoding]::ASCII.GetBytes([string]$entry.Value)) -ne [string]$entry.Value) {
                 throw "CLI 译文必须使用 ASCII 转义：$($entry.Key)"
@@ -396,6 +431,7 @@ function Patch-ClaudeCliText {
                 throw "CLI 译文长度超过原文：$($entry.Key)"
             }
 
+            $entryCount = 0
             $offset = 0
             while (($offset = $searchable.IndexOf([string]$entry.Key, $offset, [System.StringComparison]::Ordinal)) -ge 0) {
                 [System.Array]::Copy($replacement, 0, $bytes, $offset, $replacement.Length)
@@ -403,9 +439,21 @@ function Patch-ClaudeCliText {
                     $bytes[$offset + $index] = 0x20
                 }
                 $offset += $source.Length
-                $count++
+                $entryCount++
             }
             $searchable = [System.Text.Encoding]::ASCII.GetString($bytes)
+            $count += $entryCount
+
+            if ($entryCount -eq 0 -and
+                $baselineSearchable.Contains([string]$entry.Key) -and
+                -not $searchable.Contains([string]$entry.Value)) {
+                $driftedPatterns += [string]$entry.Key
+            }
+        }
+
+        if ($driftedPatterns.Count -gt 0) {
+            Write-Host "警告：以下白名单在历史 backup 中存在，但当前 CLI 找不到原文与译文，疑似升级后变量名漂移：" -ForegroundColor Red
+            $driftedPatterns | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
         }
 
         if ($count -eq 0) {
@@ -468,7 +516,7 @@ function Get-ClaudeIdeReplacements {
         "Yes, and don't ask again" = "是，不再询问"
         "Yes, allow access to " = "是，允许访问 "
         "Yes, allow " = "是，允许 "
-        "User declined to answer questions" = "用户拒绝回答问题"
+        "User declined to answer questions" = "用户暂未回答该问题"
         "Waiting for permission…" = "正在等待授权……"
         "Loading MCP servers…" = "正在加载 MCP 服务器……"
         "Loading context usage…" = "正在加载上下文用量……"
@@ -672,21 +720,29 @@ function Test-ChineseSetup {
 
     if ($Target -in @("All", "Codex")) {
         $instructionsPath = Join-Path $HOME ".codex\AGENTS.md"
+        $overridePath = Join-Path $HOME ".codex\AGENTS.override.md"
         try {
             if (-not ([System.IO.File]::ReadAllText($instructionsPath).Contains("<!-- BEGIN CHINESE-OUTPUT-RULES -->"))) {
                 throw "缺少中文规则标记"
             }
+            if ((Test-Path -LiteralPath $overridePath) -and
+                -not ([System.IO.File]::ReadAllText($overridePath).Contains("<!-- BEGIN CHINESE-OUTPUT-RULES -->"))) {
+                Write-Host "警告：$overridePath 存在但缺少中文规则，会完全屏蔽 AGENTS.md。" -ForegroundColor Yellow
+            }
             $checkedEditors = 0
             foreach ($profile in Get-EditorProfiles) {
+                if (-not (Test-CodexExtensionInstalled -Profile $profile)) {
+                    continue
+                }
                 if (Test-Path -LiteralPath $profile.SettingsPath) {
                     $content = [System.IO.File]::ReadAllText($profile.SettingsPath)
                     if ($content -notmatch '"chatgpt\.localeOverride"\s*:\s*"zh-CN"') {
-                        throw "$($profile.Name) 未启用 zh-CN"
+                        throw "$($profile.Name) 已装 Codex 扩展但未启用 zh-CN"
                     }
                     $checkedEditors++
                 }
             }
-            Write-Host "Codex 配置正常；已检查 $checkedEditors 个编辑器。" -ForegroundColor Green
+            Write-Host "Codex 配置正常；已检查 $checkedEditors 个装了 Codex 扩展的编辑器。" -ForegroundColor Green
         }
         catch {
             Write-Host "Codex 配置异常：$($_.Exception.Message)" -ForegroundColor Red

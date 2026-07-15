@@ -16,13 +16,16 @@ if (Test-Path -LiteralPath $resolvedTestRoot) {
 $homePath = Join-Path $resolvedTestRoot "home"
 $appDataPath = Join-Path $resolvedTestRoot "appdata"
 $editorSettingsPath = Join-Path $appDataPath "Code\User\settings.json"
+$cursorSettingsPath = Join-Path $appDataPath "Cursor\User\settings.json"
 $extensionPath = Join-Path $homePath ".vscode\extensions\anthropic.claude-code-test"
+$codexExtPath = Join-Path $homePath ".vscode\extensions\openai.chatgpt-test"
 $webviewPath = Join-Path $extensionPath "webview\index.js"
 $cliPath = Join-Path $appDataPath "npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
 $installerPath = Join-Path $PSScriptRoot "Install-ClaudeChinese-WindowsPowerShell-Integrated.ps1"
 
 New-Item -ItemType Directory -Path (Split-Path -Parent $editorSettingsPath) -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $webviewPath) -Force | Out-Null
+New-Item -ItemType Directory -Path $codexExtPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $cliPath) -Force | Out-Null
 [System.IO.File]::WriteAllText($editorSettingsPath, "{`n    // keep this comment`n    `"editor.fontSize`": 14`n}")
 $originalWebview = '"Type something..." | "New conversation" | "Yes, allow all edits this session" | "Waiting for permission…" | "Loading sessions…" | "Checking working directory" | "Connecting to browser…" | "Task Completed" | "Update(${path})" | "Added 2 lines, removed 1 line"'
@@ -55,6 +58,9 @@ try {
     if ((Get-Content $editorSettingsPath -Raw) -notmatch '"chatgpt\.localeOverride"\s*:\s*"zh-CN"') {
         throw "Codex IDE locale 未写入"
     }
+    if (Test-Path $cursorSettingsPath) {
+        throw "未装 Codex 扩展的 Cursor settings.json 被凭空创建（P0-1 回归）"
+    }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "输入内容") { throw "Claude IDE 补丁未生效" }
     if ([System.IO.File]::ReadAllText($webviewPath) -notmatch "正在等待授权") { throw "Claude 状态文字补丁未生效" }
     if ([System.IO.File]::ReadAllText($webviewPath) -match "Task Completed") { throw "Claude 状态英文仍有残留" }
@@ -70,7 +76,7 @@ try {
     if ([System.IO.File]::ReadAllText($cliPath) -match 'Searching for|patterns|Reading|files|Listing|directories') {
         throw "Claude CLI 工具摘要补丁未生效"
     }
-    foreach ($text in @('\u5165\u95e8\u63d0\u793a', '\u66f4\u65b0', '\u6b63\u5728\u641c\u7d22', '\u4e2a\u5339\u914d\u9879', '\u8bfb\u53d6', '\u4e2a\u6587\u4ef6', '\u5217\u51fa', '\u4e2a\u76ee\u5f55', '\u601d\u8003\u4e2d')) {
+    foreach ($text in @('\u5165\u95e8\u63d0\u793a', '\u65b0\u7248', '\u6b63\u5728\u641c\u7d22', '\u4e2a\u5339\u914d\u9879', '\u8bfb\u53d6', '\u4e2a\u6587\u4ef6', '\u5217\u51fa', '\u4e2a\u76ee\u5f55', '\u601d\u8003\u4e2d')) {
         if (-not [System.IO.File]::ReadAllText($cliPath).Contains($text)) {
             throw "Claude CLI ASCII 转义译文缺失：$text"
         }
@@ -105,6 +111,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "恢复失败" }
     if ([System.IO.File]::ReadAllText($webviewPath) -ne $originalWebview) { throw "恢复内容不一致" }
     if ([System.IO.File]::ReadAllText($cliPath) -ne $originalCli) { throw "CLI 恢复内容不一致" }
+
+    # 验证 CLI 升级后变量名漂移能被检测到（防止测试绿洲）
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target Claude | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "drift 测试前的安装失败" }
+    $driftMarker = 'totallyNewVarPlaceholder'
+    $driftedCli = [System.IO.File]::ReadAllText($cliPath).Replace('\u5165\u95e8\u63d0\u793a', $driftMarker)
+    if ($driftedCli -eq [System.IO.File]::ReadAllText($cliPath)) { throw "drift 测试夹具未命中译文" }
+    [System.IO.File]::WriteAllText($cliPath, $driftedCli)
+    $driftOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath -Target Claude 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "drift 检测运行失败" }
+    if ($driftOutput -notmatch '变量名漂移') { throw "未检测到 CLI 升级后的白名单漂移警告" }
 
     Write-Host "Installer test OK" -ForegroundColor Green
 }

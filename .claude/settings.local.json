@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Administrator/.claude/**)",
+      "Read(//c/Users/Administrator/.codex/**)",
+      "Bash(codex --version)",
+      "Bash(grep *)",
+      "WebSearch",
+      "Bash(curl -sS \"https://api.github.com/repos/openai/codex/contents/docs\")",
+      "Bash(curl -sS \"https://api.github.com/repos/openai/codex/contents/codex-rs/core/src\")",
+      "Bash(curl -sS \"https://api.github.com/search/code?q=repo:openai/codex+CODEX_HOME+AGENTS.md\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(x['name']\\) for x in d if 'config' in x['name'].lower\\(\\) or 'codex_home' in x['name'].lower\\(\\) or 'instruction' in x['name'].lower\\(\\)]\")",
+      "Bash(curl -sS \"https://api.github.com/search/code?q=load_global_instructions+repo:openai/codex\")",
+      "Bash(curl -sS \"https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/config.rs\")",
+      "Bash(curl -sS \"https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/main.rs\")",
+      "Bash(curl -sS \"https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/lib.rs\")",
+      "Bash(curl -sS https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/__TRACKED_VAR__)",
+      "Bash(where codex *)",
+      "Bash(powershell *)",
+      "Read(//c/Users/Administrator/AppData/Roaming/Code/User/**)",
+      "Read(//c/Users/Administrator/AppData/Roaming/Code - Insiders/User/**)",
+      "Read(//c/Users/Administrator/AppData/Roaming/Cursor/User/**)",
+      "Read(//c/Users/Administrator/AppData/Roaming/Windsurf/User/**)",
+      "Read(//c/Users/Administrator/.local/bin/**)",
+      "Bash(find /c/Users/Administrator/.vscode/extensions/anthropic.claude-code-*/ -name \"*.zh-cn-backup\")",
+      "Bash(awk 'NR==112' /d/zhuomian/ClaudeChinese/Test-Installer.ps1)",
+      "Bash(python *)",
+      "Bash(git *)"
+    ]
+  }
+}
